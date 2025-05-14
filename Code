@@ -1,0 +1,102 @@
+
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2); // 16x2 LCD
+
+const int moisturePin = A1;
+const int tdsPin = A3;
+const int relayPin = 2;
+
+bool pumpOn = false;
+unsigned long lastSwitchTime = 0;
+bool showMoistureScreen = true;
+
+void setup() {
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, HIGH); // Pump initially OFF
+
+  lcd.setCursor(0, 0);
+  lcd.print("IRRIGATION SYS");
+  lcd.setCursor(0, 1);
+  lcd.print("SYSTEM IS ON");
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // Read moisture
+  int moistureRaw = analogRead(moisturePin);
+  int moisturePercent = map(moistureRaw, 0, 1023, 100, 0);
+
+  // Pump control — instant reaction
+  if (moisturePercent > 50) {
+    digitalWrite(relayPin, HIGH); // OFF
+    pumpOn = false;
+  } else {
+    digitalWrite(relayPin, LOW);  // ON
+    pumpOn = true;
+  }
+
+  // Read TDS
+  int tdsRaw = analogRead(tdsPin);
+  float tdsVoltage = tdsRaw * (5.0 / 1023.0);
+  float tdsValue = (133.42 * pow(tdsVoltage, 3) - 255.86 * pow(tdsVoltage, 2) + 857.39 * tdsVoltage) * 0.5;
+
+  // Water quality type
+  String waterType;
+  if (tdsValue < 300) {
+    waterType = "Pure";
+  } else if (tdsValue < 500) {
+    waterType = "Good";
+  } else if (tdsValue < 1000) {
+    waterType = "Fair";
+  } else {
+    waterType = "Poor";
+  }
+
+  // Serial debug
+  Serial.print("Moisture: ");
+  Serial.print(moisturePercent);
+  Serial.print("% | Pump: ");
+  Serial.print(pumpOn ? "ON" : "OFF");
+  Serial.print(" | TDS: ");
+  Serial.print(tdsValue);
+  Serial.print(" ppm | Water: ");
+  Serial.println(waterType);
+
+  // Update LCD every 2 seconds
+  unsigned long currentTime = millis();
+  if (currentTime - lastSwitchTime >= 2000) {
+    lastSwitchTime = currentTime;
+    showMoistureScreen = !showMoistureScreen;
+
+    lcd.clear();
+
+    if (showMoistureScreen) {
+      // Screen 1: Moisture + Pump Status
+      lcd.setCursor(0, 0);
+      lcd.print("Moisture: ");
+      lcd.print(moisturePercent);
+      lcd.print("%");
+
+      lcd.setCursor(0, 1);
+      lcd.print("Pump: ");
+      lcd.print(pumpOn ? "ON " : "OFF");
+    } else {
+      // Screen 2: TDS + Water Type
+      lcd.setCursor(0, 0);
+      lcd.print("TDS: ");
+      lcd.print(tdsValue, 1);
+      lcd.print(" ppm");
+
+      lcd.setCursor(0, 1);
+      lcd.print("Water: ");
+      lcd.print(waterType);
+    }
+  }
+}
+
